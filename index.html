@@ -163,7 +163,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
     <span class="row">день <span class="num" id="n-day">1</span> · <span class="num" id="n-time">07:00</span></span>
     <div class="hud-btns">
       <button id="btn-sound" aria-pressed="true" title="M">Звук</button>
-      <button id="btn-pix" aria-pressed="true" title="P">Пиксели</button>
+      <button id="btn-pix" aria-pressed="false" title="P">Пиксели</button>
       <button id="btn-help" aria-pressed="true" title="H">Помощь</button>
     </div>
   </div>
@@ -304,7 +304,7 @@ const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
 scene.add(hemi, sun);
 
 const PX = IS_TOUCH ? 2 : 3;
-let pixelMode = true, rt;
+let pixelMode = false, rt;
 const postMat = new THREE.ShaderMaterial({
   uniforms: { tDiffuse: { value: null }, uLevels: { value: 28 }, uVig: { value: 0.5 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
