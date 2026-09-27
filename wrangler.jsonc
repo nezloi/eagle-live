@@ -1,0 +1,7 @@
+{
+  "name": "eagle-live",
+  "compatibility_date": "2025-09-01",
+  // только статические файлы, без кода Worker'а
+  "assets": { "directory": "." },
+  "routes": [{ "pattern": "eagle-live.derz.co", "custom_domain": true }]
+}
