@@ -78,6 +78,9 @@ body {
 button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 #chips { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; gap: 6px; }
+.zen .life, .zen .quests, .zen .tally .br { display: none; }
+.overlay .starts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.overlay .go.alt { border-color: var(--moss); color: var(--moss); }
 .vitals .quests { grid-column: 1 / -1; margin: 0; display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
 .vitals .quests .ready { color: var(--amber); }
 #talk { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); width: min(460px, calc(100% - 24px)); padding: 10px 14px; font-size: 14px; line-height: 1.45; }
@@ -150,10 +153,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 
 <div id="hud" hidden>
   <dl class="vitals panel">
-    <dt>Сытость</dt><dd class="bar" id="b-food"><i></i></dd><dd class="num" id="n-food">0</dd>
-    <dt>Здоровье</dt><dd class="bar" id="b-hp"><i></i></dd><dd class="num" id="n-hp">0</dd>
-    <dt>Силы</dt><dd class="bar" id="b-st"><i></i></dd><dd class="num" id="n-st">0</dd>
-    <dd class="tally"><span>Добыча <b id="n-prey">0</b></span><span>Пролёт <b id="n-dist">0.0</b> км</span><span>Ветки <b id="n-br">0</b></span></dd>
+    <dt class="life">Сытость</dt><dd class="bar life" id="b-food"><i></i></dd><dd class="num life" id="n-food">0</dd>
+    <dt class="life">Здоровье</dt><dd class="bar life" id="b-hp"><i></i></dd><dd class="num life" id="n-hp">0</dd>
+    <dt class="life">Силы</dt><dd class="bar life" id="b-st"><i></i></dd><dd class="num life" id="n-st">0</dd>
+    <dd class="tally"><span>Добыча <b id="n-prey">0</b></span><span>Пролёт <b id="n-dist">0.0</b> км</span><span class="br">Ветки <b id="n-br">0</b></span></dd>
     <dd class="quests" id="quests"></dd>
   </dl>
   <div id="chips"></div>
@@ -165,6 +168,8 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
       <button id="btn-sound" aria-pressed="true" title="M">Звук</button>
       <button id="btn-pix" aria-pressed="false" title="P">Пиксели</button>
       <button id="btn-help" aria-pressed="true" title="H">Помощь</button>
+      <button id="btn-music" title="N — следующий трек">♪ 1</button>
+      <button id="btn-zen" aria-pressed="false" title="Z">Дзен</button>
     </div>
   </div>
   <figure class="mapbox panel" style="margin:0">
@@ -179,6 +184,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
     <kbd>C</kbd> — крик · <kbd>M</kbd> звук · <kbd>P</kbd> пиксели · <kbd>H</kbd> подсказка</div>
     <p>Зайцы живут на лугах, рыба — в озёрах. Садись медленно: на кроны, на землю или в гнездо. Над прогретыми склонами днём поднимают восходящие потоки.</p>
     <p>Медведь, лиса, волк и сова дают задания — они отмечены на карте. За каждое — ветка. Четыре ветки, уложенные в гнездо, перестроят его.</p>
+    <p><kbd>Z</kbd> — дзен-режим: без голода, усталости и заданий. <kbd>N</kbd> — следующий музыкальный трек.</p>
   </div>
   <div id="flash" class="panel"></div>
   <div id="talk" class="panel" hidden></div>
@@ -197,7 +203,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
     <p class="fact">Беркут пикирует быстрее 200 км/ч. Из конца в конец леса на машущем полёте — больше десяти минут.</p>
     <div class="keys tc"><span><kbd>Палец</kbd> направление</span><span><kbd>Взмах</kbd> взлёт</span><span><kbd>Пике</kbd> вниз</span><span><kbd>Тормоз</kbd> посадка</span><span>Удобнее держать горизонтально</span></div>
     <div class="keys kb"><span><kbd>Мышь</kbd> направление</span><span><kbd>Пробел</kbd> взмах</span><span><kbd>Shift</kbd> пике</span><span><kbd>S</kbd> посадка</span><span><kbd>C</kbd> крик</span></div>
-    <button class="go" id="btn-start" disabled>Растим лес…</button>
+    <div class="starts">
+      <button class="go" id="btn-start" disabled>Растим лес…</button>
+      <button class="go alt" id="btn-zen-start" disabled>Дзен-полёт</button>
+    </div>
+    <p class="fact">Дзен-полёт: без голода, усталости и заданий — просто небо, лес и музыка.</p>
   </div>
 </div>
 <div id="pause" class="overlay" hidden><div class="inner"><h2>Пауза</h2><p>Кликни, чтобы вернуться в небо</p></div></div>
@@ -640,7 +650,7 @@ function updatePrey(dt) {
 const E = { pos: new THREE.Vector3(NEST.x, NEST.top, NEST.z), yaw: 0, pitch: 0, pitchT: 0, roll: 0, yawRate: 0, speed: 0, vy: 0, mode: 'perch',
   phase: 0, stamina: 100, health: 100, food: 80, exhausted: false, atNest: true, lift: 0, inv: 0, flapping: false, wing: 'perch' };
 const stats = { dist: 0, catches: 0, maxSpeed: 0 };
-let started = false, paused = false, dead = false, locked = false;
+let started = false, paused = false, dead = false, locked = false, zen = false;
 function respawn() {
   Object.assign(E, { yaw: 0, pitch: 0, pitchT: 0, roll: 0, speed: 0, vy: 0, mode: 'perch', stamina: 100, health: 100, food: 80, exhausted: false, atNest: true, inv: 0 });
   E.pos.set(NEST.x, NEST.top, NEST.z);
@@ -659,6 +669,8 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   if (e.code === 'KeyC' && started) sfx.cry();
   if (e.code === 'KeyM') toggleSound();
+  if (e.code === 'KeyN') nextTrack();
+  if (e.code === 'KeyZ' && started) setZen(!zen);
   if (e.code === 'KeyP') togglePixels();
   if (e.code === 'KeyH') toggleHelp();
 });
@@ -747,9 +759,92 @@ const sfx = {
 // ---------- UI ----------
 let flashTimer;
 function flash(msg, ms = 2600) { const el = $('flash'); el.textContent = msg; el.classList.add('on'); clearTimeout(flashTimer); flashTimer = setTimeout(() => el.classList.remove('on'), ms); }
+// ---------- ambient music ----------
+// Музыка генерируется на лету: пэд из аккордов, бас и редкие «колокольчики» через реверберацию.
+const TRACKS = [
+  { name: 'Утренний туман', dur: 9, pad: 'sine', bell: false, pluck: 0.35, cutoff: 1100,
+    chords: [[50, 57, 61, 66], [47, 54, 57, 62], [43, 50, 54, 59], [45, 52, 57, 61]], scale: [62, 64, 66, 69, 71, 74, 76, 78, 81] },
+  { name: 'Над тайгой', dur: 11, pad: 'triangle', bell: false, pluck: 0.25, cutoff: 800,
+    chords: [[45, 52, 55, 59], [41, 48, 52, 57], [48, 55, 59, 64], [43, 50, 55, 59]], scale: [64, 67, 69, 71, 72, 76, 79, 81] },
+  { name: 'Тёплый ветер', dur: 8, pad: 'sine', bell: true, pluck: 0.45, cutoff: 1400,
+    chords: [[41, 48, 52, 59], [43, 50, 53, 59], [40, 47, 50, 55], [45, 52, 55, 60]], scale: [65, 67, 69, 71, 72, 74, 76, 79] },
+  { name: 'Ночная река', dur: 13, pad: 'triangle', bell: true, pluck: 0.18, cutoff: 650,
+    chords: [[40, 47, 50, 54], [45, 52, 55, 59], [48, 55, 59, 62], [50, 57, 60, 64]], scale: [64, 66, 67, 69, 71, 74, 76, 78] },
+];
+const music = { track: 0, on: true, idx: 0, next: 0, bus: null, out: null, delay: null, timer: null };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function initMusic() {
+  if (music.out || !actx) return;
+  music.out = actx.createGain(); music.out.gain.value = 0.55; music.out.connect(master);
+  const rev = actx.createConvolver(), len = actx.sampleRate * 3.5, ir = actx.createBuffer(2, len, actx.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+  rev.buffer = ir;
+  const wet = actx.createGain(); wet.gain.value = 0.7;
+  music.out.connect(rev).connect(wet).connect(master);
+  music.delay = actx.createDelay(1); music.delay.delayTime.value = 0.45;
+  const fb = actx.createGain(); fb.gain.value = 0.35;
+  music.delay.connect(fb).connect(music.delay); music.delay.connect(music.out);
+  music.timer = setInterval(musicTick, 200);
+  playTrack(music.track);
+}
+function playTrack(i) {
+  if (!actx || !music.out) return;
+  if (music.bus) { const old = music.bus; old.gain.setTargetAtTime(0, actx.currentTime, 0.6); setTimeout(() => old.disconnect(), 5000); }
+  music.bus = null; music.track = i; music.idx = 0;
+  if (!music.on) return;
+  music.bus = actx.createGain(); music.bus.gain.value = 0; music.bus.connect(music.out);
+  music.bus.gain.setTargetAtTime(1, actx.currentTime + 0.5, 1.2);
+  music.next = actx.currentTime + 0.6;
+}
+function musicTick() {
+  if (!music.bus || actx.state !== 'running') return;
+  const T = TRACKS[music.track], now = actx.currentTime;
+  if (music.next < now) music.next = now + 0.1; // вкладка спала — не догоняем пропущенное
+  while (music.next < now + 0.6) {
+    const ch = T.chords[music.idx++ % T.chords.length];
+    for (const n of ch) padVoice(mtof(n), music.next, T.dur, T, 0.035);
+    padVoice(mtof(ch[0] - 12), music.next, T.dur, T, 0.06);
+    music.next += T.dur;
+  }
+  if (Math.random() < T.pluck * 0.2) pluck(mtof(T.scale[Math.random() * T.scale.length | 0]), now + 0.1 + Math.random() * 0.3, T);
+}
+function padVoice(f, t, dur, T, vol) {
+  const g = actx.createGain(), flt = actx.createBiquadFilter();
+  flt.type = 'lowpass'; flt.frequency.value = T.cutoff;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.35);
+  g.gain.setValueAtTime(vol, t + dur * 0.8); g.gain.linearRampToValueAtTime(0, t + dur * 1.3);
+  flt.connect(g).connect(music.bus);
+  for (const det of [-6, 6]) { const o = actx.createOscillator(); o.type = T.pad; o.frequency.value = f; o.detune.value = det; o.connect(flt); o.start(t); o.stop(t + dur * 1.35); }
+}
+function pluck(f, t, T) {
+  const g = actx.createGain(), o = actx.createOscillator();
+  o.type = T.bell ? 'sine' : 'triangle'; o.frequency.value = f;
+  if (T.bell) { const m = actx.createOscillator(), mg = actx.createGain(); m.frequency.value = f * 3.5; mg.gain.setValueAtTime(f * 1.5, t); mg.gain.exponentialRampToValueAtTime(1, t + 2); m.connect(mg).connect(o.frequency); m.start(t); m.stop(t + 3); }
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+  o.connect(g); g.connect(music.bus); g.connect(music.delay); o.start(t); o.stop(t + 3);
+}
+function nextTrack() {
+  // по кругу: трек 1 → … → трек 4 → выкл → трек 1
+  if (!music.on) { music.on = true; music.track = 0; }
+  else if (music.track === TRACKS.length - 1) music.on = false;
+  else music.track++;
+  save.music = music.on ? music.track : -1; persist();
+  updateMusicBtn();
+  if (music.out) playTrack(music.track);
+  flash(music.on ? `Музыка: ${TRACKS[music.track].name}` : 'Музыка выключена');
+}
+function updateMusicBtn() { const b = $('btn-music'); b.textContent = music.on ? `♪ ${music.track + 1}` : '♪ выкл'; b.setAttribute('aria-pressed', music.on); }
+function setZen(on) {
+  zen = on; save.zen = on; persist();
+  document.body.classList.toggle('zen', on); $('btn-zen').setAttribute('aria-pressed', on);
+  if (on) { E.stamina = 100; E.exhausted = false; E.food = Math.max(E.food, 60); E.health = 100; $('talk').hidden = true; }
+  if (started) flash(on ? 'Дзен-режим: без голода, усталости и заданий' : 'Обычный режим: голод, силы и задания снова в игре');
+  drawMap();
+}
 function toggleSound() { soundOn = !soundOn; if (master) master.gain.value = soundOn ? 0.6 : 0; $('btn-sound').setAttribute('aria-pressed', soundOn); }
 function togglePixels() { pixelMode = !pixelMode; resize(); $('btn-pix').setAttribute('aria-pressed', pixelMode); }
 function toggleHelp() { const h = $('help'); h.hidden = !h.hidden; $('btn-help').setAttribute('aria-pressed', !h.hidden); }
+$('btn-music').onclick = nextTrack; $('btn-zen').onclick = () => setZen(!zen);
 $('btn-sound').onclick = toggleSound; $('btn-pix').onclick = togglePixels; $('btn-help').onclick = toggleHelp;
 if (matchMedia('(max-width: 640px)').matches || IS_TOUCH) toggleHelp();
 
@@ -777,7 +872,7 @@ function drawMap() {
   ctx.imageSmoothingEnabled = false; ctx.drawImage(mapImg, 0, 0);
   const [nx, ny] = toMap(NEST.x, NEST.z);
   ctx.fillStyle = '#e2a03f'; ctx.fillRect(nx - 3, ny - 3, 6, 6);
-  for (const n of NPCS) {
+  if (!zen) for (const n of NPCS) {
     const [px, py] = toMap(n.x, n.z), st = save.q[n.id].s;
     ctx.fillStyle = '#000'; ctx.fillRect(px - 4, py - 4, 8, 8);
     ctx.fillStyle = st === 'done' ? '#a7ad97' : n.color; ctx.fillRect(px - 3, py - 3, 6, 6);
@@ -810,7 +905,7 @@ function updateMarkers() {
   for (const n of NPCS) {
     const d = Math.hypot(n.x - E.pos.x, n.z - E.pos.z), st = save.q[n.id].s;
     const sp = started && d > 30 ? project(n.x, n.y + 7, n.z) : null;
-    n.mk.hidden = !sp;
+    n.mk.hidden = !sp || zen;
     if (sp) {
       n.mk.className = 'mk-npc ' + st;
       n.mk.style.transform = `translate(${sp[0]}px, ${sp[1]}px) translate(-50%, -100%)`;
@@ -844,7 +939,7 @@ function updateHud(dt) {
   if (E.wing === 'dive') chips.push('<span class="dive">Пике</span>');
   if (E.mode === 'fly' && E.speed < 9) chips.push('<span class="warn">Сваливание — взмахни крыльями</span>');
   if (E.exhausted) chips.push('<span class="warn">Нет сил — планируй</span>');
-  if (E.food < 20) chips.push('<span class="warn">Голод</span>');
+  if (E.food < 20 && !zen) chips.push('<span class="warn">Голод</span>');
   if (E.mode === 'perch') chips.push(`<span>${E.atNest ? 'В гнезде' : 'Сидит'} · ${IS_TOUCH ? '«Взмах»' : 'Пробел'} — взлёт</span>`);
   const html = chips.join(''); if ($('chips').innerHTML !== html) $('chips').innerHTML = html;
   if (E.food < 25 && !warned) { warned = true; flash('Голодно. Зайцы — на лугах, рыба — в озёрах'); }
@@ -868,6 +963,7 @@ function steer(dt) {
   E.yawRate = damp(E.yawRate, (E.yaw - prevYaw) / Math.max(dt, 1e-4), 6, dt);
 }
 function hurt(dmg, msg) {
+  if (zen) { sfx.thump(); return; }
   if (E.inv > 0) return;
   E.health -= dmg; E.inv = 1; flash(`${msg} −${dmg} здоровья`); sfx.thump();
 }
@@ -884,7 +980,7 @@ function stepFly(dt) {
   const brake = keys.KeyS || touch.brake;
   if (E.stamina <= 0) E.exhausted = true; else if (E.stamina > 25) E.exhausted = false;
   E.flapping = flapKey && !E.exhausted && !dive;
-  E.stamina = clamp(E.stamina + (E.flapping ? -10 : 6) * dt, 0, 100);
+  E.stamina = zen ? 100 : clamp(E.stamina + (E.flapping ? -10 : 6) * dt, 0, 100);
   if (dive) E.pitchT -= 1.1 * dt;
   if (E.speed < 8) E.pitchT -= (8 - E.speed) * 0.12 * dt;
   E.pitchT = clamp(E.pitchT, -1.35, 1.0);
@@ -944,6 +1040,7 @@ function stepPerch(dt) {
   }
 }
 function stepLife(dt) {
+  if (zen) return;
   E.inv -= dt;
   E.food = Math.max(0, E.food - dt * (0.3 + (E.flapping && E.mode === 'fly' ? 0.15 : 0)));
   if (E.food <= 0) E.health -= dt * 1.2; else if (E.food > 50) E.health += dt * 0.4;
@@ -1111,6 +1208,7 @@ function questLog() {
     : `<span>${n.name}: ${n.task} ${progressText(n)}</span>`).join('');
 }
 function questEvent(kind, amount) {
+  if (zen) return;
   for (const n of NPCS) {
     const q = save.q[n.id];
     if (q.s !== 'active' || n.kind !== kind) continue;
@@ -1151,7 +1249,7 @@ function updateNpcs(dt) {
     if (d > 1300) continue;
     if (d < 90) n.yaw += angDiff(Math.atan2(dx, dz), n.yaw) * (1 - Math.exp(-3 * dt));
     n.g.rotation.y = n.yaw; n.anim(n.t);
-    const near = started && !dead && d < 35 && E.pos.y - n.y < 30;
+    const near = started && !dead && !zen && d < 35 && E.pos.y - n.y < 30;
     if (near && !n.near) talk(n);
     n.near = near;
   }
@@ -1254,15 +1352,18 @@ function frame(now) {
   renderer.setRenderTarget(null); renderer.render(postScene, postCam);
 }
 
-function start() {
+function start(asZen) {
+  if (typeof asZen === 'boolean') setZen(asZen);
   initAudio(); if (actx && actx.state === 'suspended') actx.resume();
+  initMusic();
   $('intro').hidden = true; $('dead').hidden = true; $('hud').hidden = false;
   $('touch').hidden = !IS_TOUCH;
   started = true; paused = false; dead = false;
   flash(IS_TOUCH ? 'Жми «Взмах», чтобы взлететь из гнезда' : 'Пробел или W — взлететь из гнезда', 4000);
   if (!IS_TOUCH) requestLock();
 }
-$('btn-start').onclick = start;
+$('btn-start').onclick = () => start(false);
+$('btn-zen-start').onclick = () => start(true);
 $('btn-again').onclick = () => { respawn(); start(); };
 $('pause').onclick = () => { paused = false; $('pause').hidden = true; requestLock(); };
 
@@ -1271,6 +1372,8 @@ setTimeout(() => {
   updateChunks(Infinity);
   buildMap(); drawMap();
   requestAnimationFrame(frame);
-  const b = $('btn-start'); b.disabled = false; b.textContent = 'В небо';
+  const b = $('btn-start'); b.disabled = false; b.textContent = 'В небо'; $('btn-zen-start').disabled = false;
+  if (save.music === -1) music.on = false; else if (save.music >= 0) music.track = save.music % TRACKS.length;
+  updateMusicBtn();
 }, 30);
 </script>
