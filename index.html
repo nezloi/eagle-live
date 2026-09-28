@@ -172,6 +172,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
       <button id="btn-sound" aria-pressed="true" title="M">Звук</button>
       <button id="btn-pix" aria-pressed="false" title="P">Пиксели</button>
       <button id="btn-help" aria-pressed="true" title="H">Помощь</button>
+      <button id="btn-view" aria-pressed="false" title="V">Глаза</button>
       <button id="btn-music" title="N — следующий трек">♪ 1</button>
       <button id="btn-zen" aria-pressed="false" title="Z">Дзен</button>
     </div>
@@ -181,11 +182,11 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
     <figcaption><span>С ↑</span><span>16 × 16 км</span></figcaption>
   </figure>
   <div id="help" class="panel">
-    <div class="tc">Веди пальцем по экрану — куда лететь<br><kbd>Взмах</kbd> — взлёт и набор скорости · <kbd>Пике</kbd> — сложить крылья<br><kbd>Тормоз</kbd> — сбросить скорость и сесть · <kbd>Крик</kbd></div>
+    <div class="tc">Веди пальцем по экрану — куда лететь<br><kbd>Взмах</kbd> — взлёт и набор скорости · <kbd>Пике</kbd> — сложить крылья<br><kbd>Тормоз</kbd> — сбросить скорость и сесть · <kbd>Крик</kbd><br>Кнопка «Глаза» вверху — вид из глаз орла</div>
     <div class="kb"><kbd>Мышь</kbd> — куда лететь (клик захватывает курсор)<br>
     <kbd>W</kbd> / <kbd>Пробел</kbd> — взмах, взлёт · <kbd>Shift</kbd> — пике<br>
     <kbd>S</kbd> — тормоз и посадка · <kbd>A</kbd> <kbd>D</kbd> — вираж · <kbd>↑</kbd> <kbd>↓</kbd> — нос<br>
-    <kbd>C</kbd> — крик · <kbd>M</kbd> звук · <kbd>P</kbd> пиксели · <kbd>H</kbd> подсказка</div>
+    <kbd>C</kbd> — крик · <kbd>V</kbd> вид из глаз · <kbd>M</kbd> звук · <kbd>P</kbd> пиксели · <kbd>H</kbd> подсказка</div>
     <p>Зайцы живут на лугах, рыба — в озёрах. Садись медленно: на кроны, на землю или в гнездо. Над прогретыми склонами днём поднимают восходящие потоки.</p>
     <p>Медведь, лиса, волк и сова дают задания — они отмечены на карте. За каждое — ветка. Четыре ветки, уложенные в гнездо, перестроят его.</p>
     <p><kbd>Z</kbd> — дзен-режим: без голода, усталости и заданий. <kbd>N</kbd> — следующий музыкальный трек.</p>
@@ -676,6 +677,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyC' && started) sfx.cry();
   if (e.code === 'KeyM') toggleSound();
   if (e.code === 'KeyN') nextTrack();
+  if (e.code === 'KeyV') toggleView();
   if (e.code === 'KeyZ' && started) setZen(!zen);
   if (e.code === 'KeyP') togglePixels();
   if (e.code === 'KeyH') toggleHelp();
@@ -828,10 +830,15 @@ function setZen(on) {
   if (started) flash(on ? 'Дзен-режим: без голода, усталости и заданий' : 'Обычный режим: голод, силы и задания снова в игре');
   drawMap();
 }
+function toggleView() {
+  fpv = !fpv; save.fpv = fpv; persist();
+  $('btn-view').setAttribute('aria-pressed', fpv);
+  if (started) flash(fpv ? 'Вид из глаз орла' : 'Вид от третьего лица');
+}
 function toggleSound() { soundOn = !soundOn; if (master) master.gain.value = soundOn ? 0.6 : 0; $('btn-sound').setAttribute('aria-pressed', soundOn); }
 function togglePixels() { pixelMode = !pixelMode; resize(); $('btn-pix').setAttribute('aria-pressed', pixelMode); }
 function toggleHelp() { const h = $('help'); h.hidden = !h.hidden; $('btn-help').setAttribute('aria-pressed', !h.hidden); }
-$('btn-music').onclick = nextTrack; $('btn-zen').onclick = () => setZen(!zen);
+$('btn-music').onclick = nextTrack; $('btn-view').onclick = toggleView; $('btn-zen').onclick = () => setZen(!zen);
 $('btn-sound').onclick = toggleSound; $('btn-pix').onclick = togglePixels; $('btn-help').onclick = toggleHelp;
 if (matchMedia('(max-width: 640px)').matches || IS_TOUCH) toggleHelp();
 
@@ -1065,7 +1072,8 @@ function updateEagle(dt, t) {
   shadow.material.opacity = clamp(1 - alt / 60, 0, 1) * 0.35 * (0.4 + daylight * 0.6);
   shadow.visible = E.mode === 'fly';
 }
-const camLook = new THREE.Vector3();
+const camLook = new THREE.Vector3(), FLIP_Y = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
+let fpv = false;
 function updateCamera(dt, t) {
   const desired = _p;
   if (!started) {
@@ -1079,6 +1087,19 @@ function updateCamera(dt, t) {
     desired.copy(E.pos).add(_s); desired.y += E.mode === 'perch' ? 2.6 : 2.2;
     camera.position.lerp(desired, 1 - Math.exp(-dt * 5));
     camLook.copy(E.pos).addScaledVector(fwd, 6); camLook.y += 1;
+  }
+  eagle.g.visible = !(started && fpv);
+  if (started && fpv) {
+    // вид из глаз: камера в голове орла и наследует его тангаж и крен
+    camera.quaternion.copy(eagle.g.quaternion).multiply(FLIP_Y);
+    _s.set(0, 0.25, 0.9).applyQuaternion(eagle.g.quaternion);
+    camera.position.copy(eagle.g.position).add(_s);
+    if (E.wing === 'flap') camera.position.y += Math.sin(E.phase) * 0.06;
+    camera.fov = damp(camera.fov, 72 + clamp((E.speed - 18) * 0.45, 0, 22), 3, dt);
+    camera.updateProjectionMatrix();
+    sky.position.copy(camera.position);
+    water.position.set(camera.position.x, 0, camera.position.z);
+    return;
   }
   const cs = surface(camera.position.x, camera.position.z);
   camera.position.y = Math.max(camera.position.y, cs.y + (cs.kind === 'water' ? 1 : 1.5));
@@ -1363,5 +1384,6 @@ setTimeout(() => {
   const b = $('btn-start'); b.disabled = false; b.textContent = 'В небо'; $('btn-zen-start').disabled = false;
   if (save.music === -1) music.on = false; else if (save.music >= 0) music.track = save.music % TRACKS.length;
   updateMusicBtn();
+  if (save.fpv) toggleView();
 }, 30);
 </script>
