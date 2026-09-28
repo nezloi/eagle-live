@@ -717,9 +717,11 @@ function initAudio() {
   try { actx = new AudioContext(); } catch { return; }
   master = actx.createGain(); master.gain.value = soundOn ? 0.6 : 0; master.connect(actx.destination);
   noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
-  const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  // коричневый шум: мягкий низкий гул вместо шипения белого шума
+  const d = noiseBuf.getChannelData(0); let last = 0;
+  for (let i = 0; i < d.length; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
   const src = actx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-  windFilter = actx.createBiquadFilter(); windFilter.type = 'bandpass'; windFilter.Q.value = 0.7;
+  windFilter = actx.createBiquadFilter(); windFilter.type = 'lowpass'; windFilter.Q.value = 0.5;
   windGain = actx.createGain(); windGain.gain.value = 0;
   src.connect(windFilter).connect(windGain).connect(master); src.start();
 }
@@ -1344,9 +1346,10 @@ function frame(now) {
   updateBirds(dt, wall);
   updateMarkers();
   if (actx) {
-    const w = E.mode === 'fly' ? Math.min(0.45, 0.03 + E.speed * E.speed / 3500) : 0.02;
-    windGain.gain.setTargetAtTime(w, actx.currentTime, 0.25);
-    windFilter.frequency.setTargetAtTime(300 + E.speed * 25, actx.currentTime, 0.25);
+    const gust = 0.8 + 0.2 * Math.sin(wall * 0.37) * Math.sin(wall * 0.13 + 1); // медленные порывы
+    const w = (E.mode === 'fly' ? Math.min(0.14, 0.015 + E.speed * E.speed / 40000) : 0.008) * gust;
+    windGain.gain.setTargetAtTime(w, actx.currentTime, 0.4);
+    windFilter.frequency.setTargetAtTime(180 + E.speed * 9, actx.currentTime, 0.4);
   }
   renderer.setRenderTarget(rt); renderer.render(scene, camera);
   renderer.setRenderTarget(null); renderer.render(postScene, postCam);
