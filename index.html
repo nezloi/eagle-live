@@ -430,6 +430,14 @@ function instanced(geo, list, place) {
   m.computeBoundingSphere();
   return m;
 }
+// дерево в ячейке сетки GRID (или null) — детерминированно, чтобы совы садились на настоящие макушки
+function treeAt(ix, iz) {
+  const r1 = hash(ix * 3 + 1, iz * 7 + 2), r2 = hash(ix * 5 + 3, iz * 11 + 5), r3 = hash(ix * 13 + 7, iz * 17 + 1), r4 = hash(ix * 19 + 2, iz * 23 + 9);
+  const x = (ix + r1) * GRID, z = (iz + r2) * GRID, h = height(x, z), f = forestAmt(x, z, h);
+  if (f <= 0 || r3 > Math.min(1, f * 3.5)) return null;
+  const con = coniferous(x, z, h) + (r4 - 0.5) * 0.5 > 0, H = con ? 15 + r4 * 11 : 10 + r4 * 8;
+  return { x, z, h, r: r4, H, con, birch: !con && r1 < 0.3, top: con ? h - 0.3 + H : h + H * 0.97 };
+}
 function buildChunk(cx, cz) {
   const x0 = cx * CS, z0 = cz * CS, n = SEG + 1, step = CS / SEG;
   const hs = new Float32Array(n * n);
@@ -458,13 +466,8 @@ function buildChunk(cx, cz) {
   const pines = [], leafs = [], trunks = [];
   const cells = CS / GRID;
   for (let gz = 0; gz < cells; gz++) for (let gx = 0; gx < cells; gx++) {
-    const ix = cx * cells + gx, iz = cz * cells + gz;
-    const r1 = hash(ix * 3 + 1, iz * 7 + 2), r2 = hash(ix * 5 + 3, iz * 11 + 5), r3 = hash(ix * 13 + 7, iz * 17 + 1), r4 = hash(ix * 19 + 2, iz * 23 + 9);
-    const x = x0 + (gx + r1) * GRID, z = z0 + (gz + r2) * GRID, h = height(x, z), f = forestAmt(x, z, h);
-    if (f <= 0 || r3 > Math.min(1, f * 3.5)) continue;
-    const con = coniferous(x, z, h) + (r4 - 0.5) * 0.5 > 0;
-    const t = { x, z, h, r: r4, H: con ? 15 + r4 * 11 : 10 + r4 * 8, con, birch: !con && r1 < 0.3 };
-    (con ? pines : leafs).push(t); trunks.push(t);
+    const t = treeAt(cx * cells + gx, cz * cells + gz);
+    if (t) { (t.con ? pines : leafs).push(t); trunks.push(t); }
   }
   if (pines.length) group.add(instanced(pineGeo, pines, (t, c) => {
     const w = t.H * (0.85 + t.r * 0.3);
@@ -759,6 +762,15 @@ const sfx = {
     if (!actx) return;
     const o = actx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(520, actx.currentTime); o.frequency.exponentialRampToValueAtTime(1040, actx.currentTime + 0.15);
     const g = actx.createGain(); env(g, 0.3, 0.02, 0.3); o.connect(g).connect(master); o.start(); o.stop(actx.currentTime + 0.4);
+  },
+  hoot(vol) {
+    if (!actx || vol <= 0.01) return;
+    for (const [d, len, f] of [[0, 0.35, 390], [0.5, 0.6, 360]]) {
+      const t = actx.currentTime + d, o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 0.93, t + len);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25 * vol, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      o.connect(g).connect(master); o.start(t); o.stop(t + len + 0.05);
+    }
   },
   thump() {
     if (!actx) return;
@@ -1075,6 +1087,7 @@ function updateEagle(dt, t) {
 }
 const camLook = new THREE.Vector3(), FLIP_Y = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
 let fpv = false;
+const fpvEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 function updateCamera(dt, t) {
   const desired = _p;
   if (!started) {
@@ -1092,8 +1105,10 @@ function updateCamera(dt, t) {
   eagle.g.visible = !(started && fpv);
   if (started && fpv) {
     // вид из глаз: камера в голове орла и наследует его тангаж и крен
-    camera.quaternion.copy(eagle.g.quaternion).multiply(FLIP_Y);
-    _s.set(0, 0.25, 0.9).applyQuaternion(eagle.g.quaternion);
+    // ориентация по курсу, а не по корпусу: при торможении орёл задирает тело, а взгляд остаётся на курсе
+    _q.setFromEuler(fpvEuler.set(-E.pitch, E.yaw, E.mode === 'perch' ? 0 : E.roll));
+    camera.quaternion.copy(_q).multiply(FLIP_Y);
+    _s.set(0, 0.25, 0.9).applyQuaternion(_q);
     camera.position.copy(eagle.g.position).add(_s);
     if (E.wing === 'flap') camera.position.y += Math.sin(E.phase) * 0.06;
     camera.fov = damp(camera.fov, 72 + clamp((E.speed - 18) * 0.45, 0, 22), 3, dt);
@@ -1332,6 +1347,101 @@ function updateBirds(dt, t) {
   }
 }
 
+// ---------- wild animals ----------
+// Такие же звери, как у заданий, но просто живут: бродят по лугам, совы перелетают с дерева на дерево.
+const WILD_KINDS = {
+  bear: { build: makeBear, n: 3, speed: 1.4, run: 1.4, shy: 0 },
+  fox: { build: makeFox, n: 4, speed: 2.5, run: 8, shy: 30 },
+  wolf: { build: makeWolf, n: 3, speed: 3.5, run: 7, shy: 20, pack: 3 },
+};
+const wild = [];
+for (const [kind, K] of Object.entries(WILD_KINDS)) for (let i = 0; i < K.n; i++) {
+  const group = [];
+  for (let k = 0; k < (K.pack || 1); k++) { const m = K.build(); m.g.visible = false; scene.add(m.g); group.push(Object.assign(m, { ox: rand(-5, 5), oz: rand(-6, -2) * k, t: rand(0, 10) })); }
+  wild.push({ kind, K, members: group, x: 0, z: 0, dir: 0, rest: 0, flee: 0, placed: false });
+}
+const walkable = (x, z) => { const h = height(x, z); return h > 1.5 && h < 330 && forestAmt(x, z, h) < 0.25; };
+function updateWild(dt) {
+  for (const a of wild) {
+    const K = a.K;
+    if (!a.placed || Math.hypot(a.x - E.pos.x, a.z - E.pos.z) > 1200) {
+      for (let tries = 0; tries < 20; tries++) {
+        const [x, z] = around(250, 900);
+        if (walkable(x, z)) { a.x = x; a.z = z; a.dir = Math.random() * 6.28; a.placed = true; break; }
+      }
+      if (!a.placed) continue;
+      a.members.forEach(m => { m.g.visible = true; m.x = a.x + m.ox; m.z = a.z + m.oz; });
+    }
+    const dx = a.x - E.pos.x, dz = a.z - E.pos.z;
+    if (K.shy && Math.hypot(dx, dz) < K.shy && E.pos.y - height(a.x, a.z) < 30) { a.flee = 3; a.dir = Math.atan2(dx, dz); }
+    a.flee -= dt; a.rest -= dt;
+    if (a.flee <= 0 && Math.random() < dt * 0.25) { a.dir += rand(-1.2, 1.2); a.rest = Math.random() < 0.4 ? rand(2, 6) : 0; }
+    const sp = a.flee > 0 ? K.run : a.rest > 0 ? 0 : K.speed;
+    const nx = a.x + Math.sin(a.dir) * sp * dt, nz = a.z + Math.cos(a.dir) * sp * dt;
+    if (walkable(nx, nz)) { a.x = nx; a.z = nz; } else a.dir += 2.2 * dt * 3;
+    const c = Math.cos(a.dir), s = Math.sin(a.dir);
+    for (const m of a.members) {
+      // стая идёт за вожаком со своим смещением
+      const tx = a.x + m.ox * c + m.oz * s, tz = a.z - m.ox * s + m.oz * c;
+      const mdx = tx - m.x, mdz = tz - m.z, md = Math.hypot(mdx, mdz);
+      const msp = Math.min(md * 2, Math.max(sp, 0.1) * 1.6);
+      if (md > 0.3) { m.x += mdx / md * msp * dt; m.z += mdz / md * msp * dt; m.dir = Math.atan2(mdx, mdz); } else m.dir = a.dir;
+      const moving = md > 0.3 || sp > 0;
+      m.t += dt * (sp > 3 ? 9 : 5);
+      m.g.position.set(m.x, height(m.x, m.z) + (moving ? Math.abs(Math.sin(m.t)) * 0.12 : 0), m.z);
+      m.g.rotation.set(0, m.dir, moving ? Math.sin(m.t) * 0.05 : 0);
+      m.anim(m.t);
+    }
+  }
+}
+
+// совы: сидят на макушках деревьев, иногда перелетают, ночью ухают
+function makeOwlFlyer() {
+  const sit = makeOwl(); sit.g.scale.setScalar(1.6); scene.add(sit.g);
+  const fly = makeBird(0x8a7a5e, 1.5);
+  return { sit, fly, state: 'sit', x: 0, y: 0, z: 0, from: null, to: null, t: 0, wait: 0, placed: false, hoot: rand(5, 20) };
+}
+const owls = Array.from({ length: 3 }, makeOwlFlyer);
+function findTree(cx, cz, rMin, rMax) {
+  for (let tries = 0; tries < 30; tries++) {
+    const a = Math.random() * 6.283, d = rand(rMin, rMax);
+    const t = treeAt(Math.floor((cx + Math.sin(a) * d) / GRID), Math.floor((cz + Math.cos(a) * d) / GRID));
+    if (t) return t;
+  }
+  return null;
+}
+function updateOwls(dt, t) {
+  for (const o of owls) {
+    if (!o.placed || Math.hypot(o.x - E.pos.x, o.z - E.pos.z) > 1200) {
+      const tr = findTree(E.pos.x, E.pos.z, 250, 900);
+      if (!tr) continue;
+      Object.assign(o, { x: tr.x, y: tr.top, z: tr.z, state: 'sit', wait: rand(4, 15), placed: true });
+    }
+    if (o.state === 'sit') {
+      o.wait -= dt;
+      const d = Math.hypot(o.x - E.pos.x, o.z - E.pos.z, o.y - E.pos.y);
+      if (d < 18 && E.mode === 'fly') o.wait = Math.min(o.wait, 0); // орёл спугнул
+      if ((o.hoot -= dt) < 0) { o.hoot = rand(8, 25); if (daylight < 0.5 || Math.random() < 0.3) sfx.hoot(clamp(1 - d / 220, 0, 1)); }
+      if (o.wait <= 0) {
+        const tr = findTree(o.x, o.z, 80, 300);
+        if (tr) { o.from = { x: o.x, y: o.y, z: o.z }; o.to = { x: tr.x, y: tr.top, z: tr.z }; o.len = Math.hypot(tr.x - o.x, tr.z - o.z); o.t = 0; o.state = 'fly'; o.dir = Math.atan2(tr.x - o.x, tr.z - o.z); }
+        else o.wait = 3;
+      }
+      o.sit.g.position.set(o.x, o.y, o.z); o.sit.anim(t);
+    } else {
+      o.t += dt * 9 / o.len;
+      const k = Math.min(o.t, 1);
+      o.x = o.from.x + (o.to.x - o.from.x) * k; o.z = o.from.z + (o.to.z - o.from.z) * k;
+      o.y = o.from.y + (o.to.y - o.from.y) * k + Math.sin(k * Math.PI) * Math.min(35, o.len * 0.15);
+      o.fly.g.position.set(o.x, o.y, o.z); o.fly.g.rotation.set(0, o.dir, 0);
+      o.fly.phase += dt * 9;
+      flapWings(o.fly, k < 0.2 || k > 0.85 || Math.sin(o.fly.phase * 0.2) > 0.3 ? Math.sin(o.fly.phase) * 0.8 : 0.1);
+      if (k >= 1) { o.state = 'sit'; o.wait = rand(6, 20); o.sit.g.rotation.y = o.dir; }
+    }
+    o.sit.g.visible = o.state === 'sit'; o.fly.g.visible = o.state === 'fly';
+  }
+}
+
 // ---------- loop ----------
 let last = performance.now(), wall = 0;
 function frame(now) {
@@ -1351,6 +1461,8 @@ function frame(now) {
   updateClouds();
   updateNpcs(dt);
   updateBirds(dt, wall);
+  updateWild(dt);
+  updateOwls(dt, wall);
   updateMarkers();
   if (actx) {
     const gust = 0.8 + 0.2 * Math.sin(wall * 0.37) * Math.sin(wall * 0.13 + 1); // медленные порывы
